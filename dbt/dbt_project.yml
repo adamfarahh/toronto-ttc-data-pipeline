@@ -1,0 +1,7 @@
+name: ttc_delays
+config-version: 2
+profile: ttc_delays
+
+models:
+  ttc_delays:
+    +materialized: view

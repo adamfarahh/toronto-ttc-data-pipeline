@@ -1,0 +1,52 @@
+version: 2
+
+sources:
+  - name: ttc_raw
+    schema: public
+    tables:
+      - name: subway_delays
+        description: One row per record in the official 2024 TTC workbook.
+      - name: delay_codes
+        description: One description per code in the official TTC code lookup.
+      - name: subway_delays_recent
+        description: One row per report in the City's refreshable 2025-onward snapshot.
+      - name: delay_codes_recent
+        description: One description per code in the recent TTC code lookup.
+
+models:
+  - name: subway_delay_reports
+    description: One row per TTC report, enriched with the description from its own feed.
+    columns:
+      - name: source_row
+        description: Excel row number for 2024 reports. Recent reports use the published CSV ID instead.
+      - name: data_source
+        description: Identifies the 2024 archive or the recent snapshot.
+      - name: report_id
+        description: Feed name and source ID joined into a key unique within the loaded data.
+        data_tests:
+          - not_null
+          - unique
+  - name: station_delay_counts
+    description: One row per recorded station label with at least one positive-delay report.
+    columns:
+      - name: station
+        data_tests:
+          - not_null
+          - unique
+  - name: cause_delay_minutes
+    description: One row per TTC code and case-insensitive description with a positive-delay report.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "ARRAY[delay_code, UPPER(cause)]"
+    columns:
+      - name: delay_code
+        data_tests:
+          - not_null
+  - name: daily_delay_totals
+    description: One row per observed service date, including all reported delay minutes.
+    columns:
+      - name: service_date
+        data_tests:
+          - not_null
+          - unique
