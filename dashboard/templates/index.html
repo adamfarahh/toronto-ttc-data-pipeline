@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Toronto Subway Delays</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main>
+    <header class="page-header">
+      <div class="project"><span class="route-mark" aria-hidden="true"><i></i><i></i><i></i></span> Toronto transit data</div>
+      <h1>Subway delays</h1>
+      {% if data and data.days %}
+      <p class="coverage"><time datetime="{{ data.days[0].date }}">{{ data.days[0].date }}</time> through <time datetime="{{ data.days[-1].date }}">{{ data.days[-1].date }}</time></p>
+      {% endif %}
+    </header>
+
+    {% if error %}
+    <section class="panel empty" role="alert"><h2>Dashboard data is unavailable</h2><p>Check the PostgreSQL password and server, then confirm that <code>dbt build</code> has created the analytics views.</p></section>
+    {% elif not data.days %}
+    <section class="panel empty"><h2>No delay records loaded</h2><p>Import the TTC data and run <code>dbt build</code> to populate the dashboard.</p></section>
+    {% else %}
+    <section class="metrics" aria-label="Totals across the loaded data">
+      {% for label, value in [('Records logged', data.records), ('Reports with a delay', data.delays), ('Total delay minutes', data.minutes)] %}
+      <div class="metric"><span>{{ label }}</span><strong>{{ '{:,}'.format(value) }}</strong></div>
+      {% endfor %}
+    </section>
+
+    <section class="panel trend" aria-labelledby="trend-title">
+      <div class="panel-header">
+        <div><h2 id="trend-title">Daily delay minutes</h2><p>Service delay minutes reported on each date</p></div>
+        <div class="range" role="group" aria-label="Daily trend date range" hidden>
+          <button type="button" data-days="0" aria-pressed="true">All data</button>
+          <button type="button" data-days="365" aria-pressed="false">Last 365 days</button>
+          <button type="button" data-days="90" aria-pressed="false">Last 90 days</button>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="trend-chart" role="img" aria-labelledby="trend-title trend-description"></canvas>
+        <div id="tooltip" class="tooltip" aria-hidden="true" hidden></div>
+      </div>
+      <p id="trend-description" class="trend-summary" aria-live="polite"></p>
+      <noscript>Enable JavaScript to see the daily trend.</noscript>
+    </section>
+
+    <section class="panel forecast" aria-labelledby="forecast-title">
+      <div class="panel-header">
+        <div>
+          <h2 id="forecast-title">Seven-day delay forecast</h2>
+          <p>Estimated service delay minutes for the week after the latest TTC report date</p>
+        </div>
+        {% if data.forecast and data.forecast.mae is not none %}
+        <div class="forecast-score">
+          <strong>{{ '{:,.0f}'.format(data.forecast.mae) }} min</strong>
+          <span>Mean absolute error</span>
+        </div>
+        {% endif %}
+      </div>
+      {% if data.forecast %}
+      {% set peak = [1, data.forecast.days | map(attribute='minutes') | max] | max %}
+      <ol class="forecast-days">
+        {% for day in data.forecast.days %}
+        <li>
+          <strong aria-label="{{ day.minutes }} minutes">{{ '{:,}'.format(day.minutes) }}</strong>
+          <div class="forecast-column" aria-hidden="true"><div style="height: {{ (day.minutes / peak * 100) | round(2) }}%"></div></div>
+          <time datetime="{{ day.date.isoformat() }}"><span>{{ day.date.strftime('%a') }}</span>{{ day.date.strftime('%b %d') }}</time>
+        </li>
+        {% endfor %}
+      </ol>
+      <p class="forecast-note">Same weekday as the previous week.{% if data.forecast.mae is not none %} Tested on {{ data.forecast.evaluated_days }} days in the latest eight weeks. Mean absolute error measures how many minutes off the forecasts were on average.{% endif %}</p>
+      {% else %}
+      <p class="forecast-note">The forecast needs seven consecutive days of TTC data.</p>
+      {% endif %}
+    </section>
+
+    <div class="rankings">
+      {% for title, subtitle, items, field, is_cause in [
+          ('Station delays', 'Top 10 recorded station labels by positive-delay report count', data.stations, 'reported_delays', false),
+          ('Delay causes', 'Top 10 TTC code descriptions by total delay minutes', data.causes, 'total_delay_minutes', true)
+      ] %}
+      <section class="panel ranking {{ 'causes' if is_cause else 'stations' }}">
+        <div class="panel-header"><div><h2>{{ title }}</h2><p>{{ subtitle }}</p></div></div>
+        {% if items %}
+        <ol>
+          {% for row in items %}
+          <li>
+            <div class="rank-row">
+              <span>{{ row.cause if is_cause else row.station | title }}{% if is_cause %}<small>{{ row.delay_code }}</small>{% endif %}</span>
+              <strong>{{ '{:,}'.format(row[field]) }}</strong>
+            </div>
+            <div class="bar-track" aria-hidden="true"><div class="bar" style="width: {{ (row[field] / items[0][field] * 100) | round(2) }}%"></div></div>
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}<p class="rank-empty">No positive-delay reports in this ranking.</p>{% endif %}
+      </section>
+      {% endfor %}
+    </div>
+    <script id="daily-data" type="application/json">{{ data.days | tojson }}</script>
+    <script src="{{ url_for('static', filename='trend.js') }}" defer></script>
+    {% endif %}
+
+    <footer>Source <a href="https://open.toronto.ca/dataset/ttc-subway-delay-data/">City of Toronto TTC Subway Delay Data</a><span>Contains information licensed under the <a href="https://open.toronto.ca/open-data-licence/">Open Government Licence – Toronto</a>.</span></footer>
+  </main>
+</body>
+</html>
